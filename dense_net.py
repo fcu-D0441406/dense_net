@@ -16,7 +16,7 @@ class Dense_net:
     
     def build_net(self,trainable):
         with tf.variable_scope('dense_net'):
-            dense1 = tf.layers.conv2d(self.x,self.k,5,2,padding='SAME')
+            dense1 = tf.layers.conv2d(self.x,self.k,7,2,padding='SAME')
             dense1 = tf.layers.max_pooling2d(dense1,3,2,padding='SAME')
             print(dense1)
             dense2 = self.dense_block(dense1,6,trainable)
@@ -31,7 +31,7 @@ class Dense_net:
             print(dense5)
             '''
             
-            avg_pool = tf.layers.average_pooling2d(dense3,2,1)
+            avg_pool = tf.layers.average_pooling2d(dense3,2,1,padding='SAME')
             print(avg_pool)
             flat = tf.layers.flatten(avg_pool)
             print(flat)
@@ -62,8 +62,7 @@ class Dense_net:
         x = tf.layers.conv2d(x,self.k,3,1,padding='SAME')
         return x
 
-'''
+
 if(__name__=='__main__'):
     ds = Dense_net(224,3,10,12,0.5)
     #print(resnet.predict)
-'''
