@@ -1,0 +1,28 @@
+<?xml version="1.0" ?>
+<annotation>
+<folder>img</folder>
+<filename>img7.jpg</filename>
+<path>D:\tensorflow_basic\yolo\img\img7.jpg</path>
+<source>
+    <database>Unknown</database>
+</source>
+<size>
+    <width>224</width>
+    <height>224</height>
+    <depth>3</depth>
+</size>
+
+<segmented>0</segmented>
+    <object>
+    <name>face</name>
+    <pose>Unspecified</pose>
+    <truncated>0</truncated>
+    <difficult>0</difficult>
+    <bndbox>
+        <xmin>42</xmin>
+        <ymin>51</ymin>
+        <xmax>109</xmax>
+        <ymax>151</ymax>
+    </bndbox>
+</object>
+</annotation>

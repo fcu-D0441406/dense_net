@@ -1,0 +1,11 @@
+<?xml version="1.0" ?>
+<annotation>
+<folder>img</folder>
+<filename>img60.jpg</filename>
+<path>D:\tensorflow_basic\yolo\img\img60.jpg</path>
+<source>
+    <database>Unknown</database>
+</source>
+
+<segmented>0</segmented>
+</annotation>
