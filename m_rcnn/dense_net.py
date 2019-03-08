@@ -24,8 +24,8 @@ class Dense_net:
         self.build_net(trainable)
         
         self.concat_predict()
-        self.best_fg_score,self.best_index = self.get_best_fg()
-        print(self.best_fg_score,self.best_index)
+        #self.best_fg_score,self.best_index = self.get_best_fg()
+        #print(self.best_fg_score,self.best_index)
         
         #self.upsample(trainable)
     
@@ -51,13 +51,7 @@ class Dense_net:
             self.dense4 = self.dense_block(self.dense3,16,False,trainable)
             self.dense4 = self.transition_layer(self.dense4,trainable)
             print(self.dense4)
-            '''
-            avg_pool = tf.layers.average_pooling2d(self.dense4,2,1)
-            print(avg_pool)
-            flat = tf.contrib.layers.flatten(avg_pool)
-            self.prediction = tf.layers.dense(flat,self.class_num)
-            print(self.prediction)
-            '''
+
             self.pre0 = self.fpn_net(self.dense4,None,True)
             self.pre1 = self.fpn_net(self.pre0,self.dense3,False)
             self.pre2 = self.fpn_net(self.pre1,self.dense2,False)
@@ -80,12 +74,12 @@ class Dense_net:
             self.rpn1,self.fg1,self.fg1_score,self.box1 = self.rpn_net(self.pre1)
             self.rpn2,self.fg2,self.fg2_score,self.box2 = self.rpn_net(self.pre2)
             self.rpn3,self.fg3,self.fg3_score,self.box3 = self.rpn_net(self.pre3)
-            '''
+            
             print(self.fg0,self.fg0_score,self.box0)
             print(self.fg1,self.fg1_score,self.box1)
             print(self.fg2,self.fg2_score,self.box2)
             print(self.fg3,self.fg3_score,self.box3)
-            '''
+            
             
     def dense_block(self,x,block_num,first,trainable):
         layer_concat = list()
@@ -138,7 +132,6 @@ class Dense_net:
                                           kernel_initializer=self.weight_init,
                                           kernel_regularizer=self.weight_decay)
             net = tf.add(pre,now)
-            #net = tf.nn.tanh(net)
             
         return net
     
@@ -149,49 +142,23 @@ class Dense_net:
         #kernel_initializer=init0
         rpn = tf.layers.conv2d(net,512,3,1,padding='SAME',kernel_initializer=self.weight_init1,activation=tf.nn.relu,
                                           kernel_regularizer=self.weight_decay) 
-        fg_pre = tf.layers.conv2d(rpn,self.anchor_num,1,1,kernel_initializer=self.weight_init,
+        fg_pre = tf.layers.conv2d(rpn,self.anchor_num*2,1,1,kernel_initializer=self.weight_init,
                                           kernel_regularizer=self.weight_decay) 
         box_pre = tf.layers.conv2d(rpn,self.anchor_num*4,1,1,kernel_initializer=self.weight_init,
                                           kernel_regularizer=self.weight_decay) 
 
         #print(fg_pre)
-        fg_pre = tf.reshape(fg_pre,(-1,fg_pre.shape[1],fg_pre.shape[2],self.anchor_num,1))
+        fg_pre = tf.reshape(fg_pre,(-1,fg_pre.shape[1],fg_pre.shape[2],self.anchor_num,2))
         box_pre = tf.reshape(box_pre,(-1,box_pre.shape[1],box_pre.shape[2],self.anchor_num,4))
-        fg_pre_score = tf.nn.sigmoid(fg_pre)
+        fg_pre_score = tf.nn.softmax(fg_pre)
         #print(fg_pre)
-        fg_pre = tf.reshape(fg_pre,(-1,fg_pre.shape[1]*fg_pre.shape[2]*self.anchor_num,1))
+        fg_pre = tf.reshape(fg_pre,(-1,fg_pre.shape[1]*fg_pre.shape[2]*self.anchor_num,2))
         box_pre = tf.reshape(box_pre,(-1,box_pre.shape[1]*box_pre.shape[2]*self.anchor_num,4))
-        fg_pre_score = tf.reshape(fg_pre_score,(-1,fg_pre_score.shape[1]*fg_pre_score.shape[2]*self.anchor_num,1))
+        fg_pre_score = tf.reshape(fg_pre_score,(-1,fg_pre_score.shape[1]*fg_pre_score.shape[2]*self.anchor_num,2))
         #print(fg_pre)
         return rpn,fg_pre,fg_pre_score,box_pre
     
     def concat_predict(self):
-        '''
-        self.fg0 = tf.pad(self.fg0,[[0,0],[0,0],[0,1]])
-        self.fg0_score = tf.pad(self.fg0_score,[[0,0],[0,0],[0,1]])
-        self.box0 = tf.pad(self.box0,[[0,0],[0,0],[0,1]])
-        
-        self.fg1 = tf.pad(self.fg1,[[0,0],[0,0],[0,1]])
-        self.fg1_score = tf.pad(self.fg1_score,[[0,0],[0,0],[0,1]])
-        self.box1 = tf.pad(self.box1,[[0,0],[0,0],[0,1]])
-        
-        self.fg2 = tf.pad(self.fg2,[[0,0],[0,0],[0,1]])
-        self.fg2_score = tf.pad(self.fg2_score,[[0,0],[0,0],[0,1]])
-        self.box2 = tf.pad(self.box2,[[0,0],[0,0],[0,1]])
-        
-        self.fg3 = tf.pad(self.fg3,[[0,0],[0,0],[0,1]])
-        self.fg3_score = tf.pad(self.fg3_score,[[0,0],[0,0],[0,1]])
-        self.box3 = tf.pad(self.box3,[[0,0],[0,0],[0,1]])
-        '''
-        self.fg0 = tf.squeeze(self.fg0,axis=2)
-        self.fg0_score = tf.squeeze(self.fg0_score,axis=2)
-        self.fg1 = tf.squeeze(self.fg1,axis=2)
-        self.fg1_score = tf.squeeze(self.fg1_score,axis=2)
-        self.fg2 = tf.squeeze(self.fg2,axis=2)
-        self.fg2_score = tf.squeeze(self.fg2_score,axis=2)
-        self.fg3 = tf.squeeze(self.fg3,axis=2)
-        self.fg3_score = tf.squeeze(self.fg3_score,axis=2)
-        
         self.all_fg = tf.concat([self.fg0,self.fg1,self.fg2,self.fg3],axis=1)
         self.all_fg_score = tf.concat([self.fg0_score,self.fg1_score,
                                        self.fg2_score,self.fg3_score],axis=1)
