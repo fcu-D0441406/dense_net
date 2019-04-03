@@ -12,7 +12,7 @@ anchor_num = 3
 a_num = 1
 ratio_num = 3
 stride=np.array([7,14,28,56])
-anchor_size=np.array([64,32,16,8])
+anchor_size=np.array([64,56,16,8])
 ratio = np.array([[1,1],[1,2],[2,1]])
 
 def show_img(img):
@@ -47,7 +47,19 @@ def rendom_sample(is_fg_bg,real_fg_bg_value,pos,max_anchor=256):
     return is_fg_bg,real_fg_bg_value,pos_weight
     
 class anchor_util:
-    def __init__(self,feat,size):
+    def __init__(self,feat,size,stride_size):
+        
+        def clip_value(x1,y1,x2,y2):
+            if(x1<0):
+                x1 = 0
+            if(y1<0):
+                y1 = 0
+            if(x2>223):
+                x2 = 223
+            if(y2>223):
+                y2 = 223
+            return x1,y1,x2,y2
+        
         ratio_size = [[1,1],[1,2],[2,1]]
         self.f_num = feat.shape[0]
         self.feat = feat
@@ -61,11 +73,13 @@ class anchor_util:
             for y in range(feat[i]):
                 for x in range(feat[i]):
                     for r in range(3):
-                        x1 = x*size[i]
-                        y1 = y*size[i]
+                        x1 = x*stride_size[i]
+                        y1 = y*stride_size[i]
                         x2 = x1+(size[i]*ratio_size[r][0])
                         y2 = y1+(size[i]*ratio_size[r][1])
                         a+=1
+                        x1,y1,x2,y2 = clip_value(x1,y1,x2,y2)
+                            
                         self.Anchor[i][y][x][r][:] = [x1,y1,x2,y2]
             self.Anchor[i] = np.reshape(self.Anchor[i],(-1,4))
         self.Anchor = np.concatenate([self.Anchor[0],self.Anchor[1],
@@ -170,7 +184,8 @@ class anchor_util:
         is_box = 0
         for box_num in range(r_box_loc.shape[0]):
             for i in range(is_fg_bg_value.shape[1]):
-                if(is_fg_bg_value[0][i][0]==1 and box_index[i]==box_num):
+                
+                if(is_fg_bg_value[0][i][1]!=1 and box_index[i]==box_num):
                     #print('id',i)
                     r_cx = (r_box_loc[box_num][0]+r_box_loc[box_num][2])/2
                     r_cy = (r_box_loc[box_num][1]+r_box_loc[box_num][3])/2
@@ -183,12 +198,17 @@ class anchor_util:
                     anchor_height = original_Anchor[i][3]-original_Anchor[i][1]
                     #print(r_cx,r_cy,r_width,r_height)
                     #print(anchor_cx,anchor_cy,anchor_width,anchor_height)
-                    dx_anchor_value[i][0] = (r_cx-anchor_cx)/anchor_width
-                    dx_anchor_value[i][1] = (r_cy-anchor_cy)/anchor_height
-                    dx_anchor_value[i][2] = np.log(r_width/anchor_width)
-                    dx_anchor_value[i][3] = np.log(r_height/anchor_height)
-                    is_dx_box[i][:] = 1,1,1,1
-                    is_box+=1
+                    if(anchor_width!=0 and anchor_height!=0):
+                        dx_anchor_value[i][0] = (r_cx-anchor_cx)/anchor_width
+                        dx_anchor_value[i][1] = (r_cy-anchor_cy)/anchor_height
+                        dx_anchor_value[i][2] = np.log(r_width/anchor_width)
+                        dx_anchor_value[i][3] = np.log(r_height/anchor_height)
+                        is_dx_box[i][:] = 1,1,1,1
+                        is_box+=1
+                    else:
+                        pass
+                        #print(i,anchor_width,anchor_height)
+
         #print(is_box)
         if(is_box==0):
             is_box=1
@@ -196,7 +216,7 @@ class anchor_util:
         dx_anchor_value = dx_anchor_value[np.newaxis,:,:]
         return dx_anchor_value,is_dx_box,is_box
     
-    def collect_roi_fg_bg(self,dx_box_loc,r_box_loc,pos_iou=0.5,neg_iou=0.1,max_anchor=128):
+    def collect_roi_fg_bg(self,dx_box_loc,r_box_loc,cls_id,pos_iou=0.5,neg_iou=0.1,max_anchor=128):
         pos = 0
         neg = 0
         is_fg_bg = np.zeros([dx_box_loc.shape[0]])
@@ -208,7 +228,14 @@ class anchor_util:
         for box_num in range(r_box_loc.shape[0]):
             for i in range(dx_box_loc.shape[0]):
                 result,iou = self.cal_IOU(dx_box_loc[i],r_box_loc[box_num],pos_iou,neg_iou)
-                if(result==1 and real_fg_bg_value[i][0]!=1):
+                
+                is_exists = False
+                for j in range(real_fg_bg_value.shape[1]):
+                    if(real_fg_bg_value[i][j]==1 and j!=1):
+                        is_exists = True
+                        break
+                        
+                if(result==1 and is_exists==False):
                     if(is_fg_bg[i]==1):
                         neg-=1
                         pos+=1
@@ -217,8 +244,9 @@ class anchor_util:
                         pos+=1
                     box_index[i] = box_num
                     is_fg_bg[i] = 1
-                    real_fg_bg_value[i][0] = 1
-                elif((result==0 or result==-1) and real_fg_bg_value[i][0]!=1):
+                    real_fg_bg_value[i][cls_id[box_num]] = 1
+                    real_fg_bg_value[i][1] = 0
+                elif((result==0 or result==-1) and is_exists==False):
                     if(is_fg_bg[i]!=1):
                         is_anchor+=1
                         neg+=1
@@ -294,7 +322,7 @@ class anchor_util:
                 result = -1
         return result,IOU
     
-    def get_best_anchor(self,pfi,pfs,dx_box_loc,num=200):
+    def get_best_anchor(self,pfi,pfs,dx_box_loc,num=600):
         loc = []
         for i in range(num):
             p_index = pfi[i]
@@ -315,7 +343,7 @@ class anchor_util:
         scores = dets[:, 4]  
         order = scores.argsort()[::-1]  
         areas = (x2 - x1 + 1) * (y2 - y1 + 1)  
-        print(order)
+        #print(order)
         keep = []  
         while order.size > 0:  
      

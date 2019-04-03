@@ -4,7 +4,8 @@ import xml.etree.ElementTree as ET
 import numpy as np
 import cv2
 
- 
+cls_idx = {'fg':0}
+
 def read_xml(path):
     xml_list = []
     for xml_file in glob.glob(path + '/*.xml'):
@@ -28,10 +29,12 @@ def read_xml(path):
 def decode_xml(xml_list):
     loc = np.zeros([len(xml_list)-1,4],dtype=np.float32)
     img = cv2.imread(xml_list[0])
+    cls = []
     for i in range(1,len(xml_list)):
+        cls.append(cls_idx[xml_list[i][0]])
         loc[i-1] = xml_list[i][1:]
     loc = np.reshape(np.array(loc),(-1,4))
-    return img,loc
+    return img,loc,cls
 '''
 def train():
     image_path = os.path.join(os.getcwd(), 'data', 'tf_wider_train', 'annotations','xmls')
