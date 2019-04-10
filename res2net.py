@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 
 r = 16
-bk_num = [3,8,24,3]
+bk_num = [3,3,3]
 split_block = 8
 sp_block_dim = 16
 
@@ -19,48 +19,42 @@ class Resnext:
                                         kernel_initializer=tf.contrib.layers.variance_scaling_initializer())
             resnext1 = tf.layers.batch_normalization(resnext1,training=trainable)
             resnext1 = tf.nn.relu(resnext1)
-            resnext1 = tf.layers.max_pooling2d(resnext1,3,2,padding='SAME')
+            #resnext1 = tf.layers.max_pooling2d(resnext1,3,2,padding='SAME')
             print(resnext1)
             
-            self.resnext1 = self.res_block(resnext1,64,bk_num[0],trainable)
+            self.resnext1 = self.res_block(resnext1,64,bk_num[0],trainable,True)
             print(self.resnext1)
             
-            self.resnext2 = self.res_block(self.resnext1,128,bk_num[1],trainable)
+            self.resnext2 = self.res_block(self.resnext1,128,bk_num[1],trainable,True)
             print(self.resnext2)
             
-            self.resnext3 = self.res_block(self.resnext2,256,bk_num[2],trainable)
+            self.resnext3 = self.res_block(self.resnext2,256,bk_num[2],trainable,True)
             print(self.resnext3)
 
-            self.resnext4 = self.res_block(self.resnext3,512,bk_num[3],trainable)
-            print(self.resnext4)
+            #self.resnext4 = self.res_block(self.resnext3,512,bk_num[3],trainable)
+            #print(self.resnext4)
             
-            avg_pool = tf.layers.average_pooling2d(self.resnext4,8,1,padding='SAME')
+            avg_pool = tf.layers.average_pooling2d(self.resnext3,4,1,padding='SAME')
             print(avg_pool)
             flat = tf.layers.flatten(avg_pool)
             self.prediction = tf.layers.dense(flat,self.class_num)
             print(self.prediction)
             
-    def res_block(self,x,out_dim,block_num,trainable):
-        
-        for i in range(block_num):
-            flag = False
-            if(x.shape[3]==out_dim):
-                flag = False
-            else:
-                flag = True
-                channel = x.shape[-1]//2
-                
+    def res_block(self,x,out_dim,block_num,trainable,flag=True):
+        pre_block = x
+        for i in range(block_num):                
             res_block = self.transition_layer(x,out_dim,trainable)
             res_block = self.scale_block(res_block,4,trainable)
             res_block = self.transition_layer(res_block,out_dim,trainable)
                     
             if(flag):
                 res_block = self.attention_layer(res_block)
-                pre_block = tf.layers.average_pooling2d(x,2,2,padding='SAME')
-                pre_block = tf.pad(pre_block,[[0,0],[0,0],[0,0],[channel,channel]])
+                pre_block = tf.layers.conv2d(pre_block,out_dim,3,2,padding='SAME')
+                #pre_block = tf.layers.average_pooling2d(x,2,2,padding='SAME')
+                #pre_block = tf.pad(pre_block,[[0,0],[0,0],[0,0],[channel,channel]])
             else:
                 pre_block = x
-            x = tf.nn.relu(pre_block+res_block)
+            x = pre_block+res_block
         return x
    
     def transition_layer(self,x,out_dim,trainable):
