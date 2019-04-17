@@ -19,16 +19,16 @@ class Resnext:
                                       kernel_initializer=tf.contrib.layers.variance_scaling_initializer())
             resnext1 = tf.layers.batch_normalization(resnext1,trainable)
             resnext1 = tf.layers.max_pooling2d(resnext1,3,2,padding='SAME')
-            self.resnext1 = self.resnext_block(resnext1,C,3,56,trainable)
+            self.resnext1 = self.resnext_block(resnext1,C,3,16,trainable)
             
-            self.resnext2 = self.resnext_block(self.resnext1,C,4,28,trainable)
-            self.resnext3 = self.resnext_block(self.resnext2,C,6,14,trainable)
-            self.resnext4 = self.resnext_block(self.resnext3,C,3,7,trainable)
+            self.resnext2 = self.resnext_block(self.resnext1,C,4,8,trainable)
+            self.resnext3 = self.resnext_block(self.resnext2,C,4,4,trainable)
+            #self.resnext4 = self.resnext_block(self.resnext3,C,3,7,trainable)
             print(self.resnext1)
             print(self.resnext2)
             print(self.resnext3)
-            print(self.resnext4)
-            avg_pool = tf.layers.average_pooling2d(self.resnext4,2,1)
+            #print(self.resnext4)
+            avg_pool = tf.layers.average_pooling2d(self.resnext3,4,1)
             #print(avg_pool)
             flat = tf.contrib.layers.flatten(avg_pool)
             #print(flat)
@@ -61,13 +61,17 @@ class Resnext:
         else:
             stride = 2
         net = tf.nn.relu(tf.layers.batch_normalization(x,training=trainable))
-        net = tf.layers.conv2d(net,4,1,stride,padding='SAME')
+        net = tf.layers.conv2d(net,4,1,stride,padding='SAME',
+                               kernel_regularizer=tf.contrib.layers.l2_regularizer(0.001),
+                               kernel_initializer=tf.contrib.layers.variance_scaling_initializer())
         net = tf.nn.relu(tf.layers.batch_normalization(net,training=trainable))
         net = tf.layers.conv2d(net,4,3,1,padding='SAME')
         net = tf.nn.relu(tf.layers.batch_normalization(net,training=trainable))
-        net = tf.layers.conv2d(net,256,1,1,padding='SAME')
+        net = tf.layers.conv2d(net,256,1,1,padding='SAME',
+                               kernel_regularizer=tf.contrib.layers.l2_regularizer(0.001),
+                               kernel_initializer=tf.contrib.layers.variance_scaling_initializer())
         return net
             
 
 if(__name__=='__main__'):
-    r = Resnext(224,3,10,32)
+    r = Resnext(224,3,10,9)
