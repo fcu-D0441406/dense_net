@@ -3,21 +3,21 @@ import numpy as np
 
 r = 16
 bk_num = [3,4,6,3]
-split_block = 8
-sp_block_dim = 16
-
+split_block = 4
+sp_block_dim = 64
+#ck1 8 16
 
 class Resnext:
     
-    def __init__(self,img_size,channel,class_num=10,batch_size=64,trainable=True):
+    def __init__(self,img_size,channel,class_num=10,batch_size=64,trainable=None):
         
         self.batch_size = batch_size
         self.weight_init = tf.initializers.truncated_normal(0.0,0.01)
         self.weight_decay = tf.contrib.layers.l2_regularizer(0.0001)
         self.x = tf.placeholder(tf.float32,[self.batch_size,img_size,img_size,channel])
         self.class_num = class_num
-        #self.build_net(trainable)
-        self.build_net_v2(trainable)
+        self.build_net(trainable)
+        #self.build_net_v2(trainable)
         
     def build_net(self,trainable):
         with tf.variable_scope('resnext',reuse=tf.AUTO_REUSE):
@@ -29,22 +29,23 @@ class Resnext:
             resnext = tf.layers.max_pooling2d(resnext,3,2,padding='SAME')
             print(resnext)
             self.resnext1 = self.res_block(resnext,64,bk_num[0],False,trainable,'block1')
-            #self.resnext1 = self.attention_layer2(self.resnext1,self.resnext1.shape[-1],'resnext1_atttention')
             print(self.resnext1)
+            
             self.resnext2 = self.res_block(self.resnext1,128,bk_num[1],True,trainable,'block2')
-            #self.resnext2 = self.attention_layer2(self.resnext2,self.resnext2.shape[-1],'resnext2_attention')
             print(self.resnext2)
+            
             self.resnext3 = self.res_block(self.resnext2,256,bk_num[2],True,trainable,'block3')
             print(self.resnext3)
             
-            #self.resnext4 = self.res_block(self.resnext3,512,bk_num[3],True,trainable,'block4',False)
-            #print(self.resnext4)
+            self.resnext4 = self.res_block(self.resnext3,512,bk_num[3],True,trainable,'block4')
+            print(self.resnext4)
             
-            avg_pool = tf.layers.average_pooling2d(self.resnext3,4,1)
+            avg_pool = tf.layers.average_pooling2d(self.resnext4,8,1)
             #print(avg_pool)
             flat = tf.contrib.layers.flatten(avg_pool)
             #print(flat)
             self.prediction = tf.layers.dense(flat,self.class_num)
+            self.pre_softmax = tf.nn.softmax(self.prediction)
             print(self.prediction)
     
     def build_net_v2(self,trainable):
@@ -61,26 +62,51 @@ class Resnext:
             self.resnext3 = self.res_block(self.resnext2,256,bk_num[2],True,trainable,'block3')
             print(self.resnext3)
             
-            #self.resnext4 = self.res_block(self.resnext3,512,bk_num[3],True,trainable,'block4',False)
-            #print(self.resnext4)
+            self.resnext4 = self.res_block(self.resnext3,512,bk_num[3],True,trainable,'block4')
+            print(self.resnext4)
             
-            avg_pool = tf.layers.average_pooling2d(self.resnext3,4,1)
+            avg_pool = tf.layers.average_pooling2d(self.resnext4,8,1)
             #print(avg_pool)
             flat = tf.contrib.layers.flatten(avg_pool)
             #print(flat)
             self.prediction = tf.layers.dense(flat,self.class_num)
+            self.pre_softmax = tf.nn.softmax(self.prediction)
             print(self.prediction)
     
     def net_v2_f_block(self,x,trainable):
-        f_x = tf.layers.conv2d(x,16,7,1,padding='SAME',
-                             kernel_initializer=tf.contrib.layers.variance_scaling_initializer())
+        f_x = tf.layers.conv2d(x,32,7,1,padding='SAME',
+                             kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
+                                 kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-4))
         f_x = self.batch_relu(f_x,trainable)
         
-        f_x = self.res_block(f_x,16,2,False,trainable,'pre_block1')
+        f2_x = self.batch_relu(f_x,trainable)
+        f2_x = tf.layers.conv2d(f2_x,32,3,1,padding='SAME',
+                             kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
+                                 kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-4))
         
-        f_x = self.res_block(f_x,32,2,True,trainable,'pre_block2')
+        f2_x = self.batch_relu(f2_x,trainable)
+        f2_x = tf.layers.conv2d(f2_x,32,3,1,padding='SAME',
+                             kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
+                                 kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-4))
+        f2_x = f_x+f2_x
         
-        return f_x
+        f3_x = self.batch_relu(f2_x,trainable)
+        f3_x = tf.layers.conv2d(f3_x,32,3,2,padding='SAME',
+                             kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
+                                 kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-4))
+        
+        f3_x = self.batch_relu(f3_x,trainable)
+        f3_x = tf.layers.conv2d(f3_x,32,3,1,padding='SAME',
+                             kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
+                                 kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-4))
+        
+        
+        f2_x = tf.layers.conv2d(f2_x,32,3,2,padding='SAME',
+                                kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
+                                 kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-4))
+        f3_x = f2_x+f3_x
+        
+        return f3_x
     
     def batch_relu(self,x,trainable):
         x = tf.layers.batch_normalization(x,training=trainable)
@@ -184,5 +210,3 @@ class Resnext:
             refined_feature=tf.multiply(channel_refined_feature,spatial_attention)
             #print(refined_feature)
             return refined_feature
-
-#resnext = Resnext(256,3)
