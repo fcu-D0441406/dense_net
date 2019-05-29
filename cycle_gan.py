@@ -24,20 +24,17 @@ def get_data(img_path):
 def generator_defect_to_pass(x,trainable=True):
     with tf.variable_scope("transfer_pass", reuse=tf.AUTO_REUSE):
         ch = 64
-        x = tf.layers.conv2d(x,ch,7,1,padding='SAME')
-        x = res_block(x,ch*2,2,trainable)#128
+        x = batch_relu(tf.layers.conv2d(x,ch,7,1,padding='SAME'),trainable)
+        x = batch_relu(tf.layers.conv2d(x,ch*2,3,2,padding='SAME'),trainable)#128
+        x = batch_relu(tf.layers.conv2d(x,ch*4,3,2,padding='SAME'),trainable)
+        for i in range(6):
+            x = res_block(x,ch*4,trainable)
+        
+        x = batch_relu(tf.layers.conv2d_transpose(x,ch*2,3,2,padding='SAME'),trainable)#128
         #print(x)
-        x = res_block(x,ch*4,2,trainable)#64
+        x = batch_relu(tf.layers.conv2d_transpose(x,ch,3,2,padding='SAME'),trainable)
         #print(x)
-        x = res_block(x,ch*4,1,trainable)#64
-        #print(x)
-        x = res_block(x,ch*4,1,trainable)#64
-        #print(x)
-        x = res_up_block(x,ch*2,trainable)#128
-        #print(x)
-        x = res_up_block(x,ch,trainable)#256
-        #print(x)
-        x = tf.layers.conv2d(x,channel,3,1,padding='SAME')
+        x = tf.layers.conv2d(x,channel,7,1,padding='SAME')
         x = tf.nn.tanh(x)
         print(x)
         return x
@@ -46,27 +43,24 @@ def generator_defect_to_pass(x,trainable=True):
 def generator_pass_to_defect(x,trainable=True):
     with tf.variable_scope("transfer_defect", reuse=tf.AUTO_REUSE):
         ch = 64
-        x = tf.layers.conv2d(x,ch,7,1,padding='SAME')
-        x = res_block(x,ch*2,2,trainable)#128
+        x = batch_relu(tf.layers.conv2d(x,ch,7,1,padding='SAME'),trainable)
+        x = batch_relu(tf.layers.conv2d(x,ch*2,3,2,padding='SAME'),trainable)#128
+        x = batch_relu(tf.layers.conv2d(x,ch*4,3,2,padding='SAME'),trainable)
+        for i in range(6):
+            x = res_block(x,ch*4,trainable)
+        
+        x = batch_relu(tf.layers.conv2d_transpose(x,ch*2,3,2,padding='SAME'),trainable)#128
         #print(x)
-        x = res_block(x,ch*4,2,trainable)#64
+        x = batch_relu(tf.layers.conv2d_transpose(x,ch,3,2,padding='SAME'),trainable)
         #print(x)
-        x = res_block(x,ch*4,1,trainable)#64
-        #print(x)
-        x = res_block(x,ch*4,1,trainable)#64
-        #print(x)
-        x = res_up_block(x,ch*2,trainable)#128
-        #print(x)
-        x = res_up_block(x,ch,trainable)#256
-        #print(x)
-        x = tf.layers.conv2d(x,channel,3,1,padding='SAME')
+        x = tf.layers.conv2d(x,channel,7,1,padding='SAME')
         x = tf.nn.tanh(x)
         print(x)
         return x
 
 def discrimator_pass(x,trainable=True):
     with tf.variable_scope("discrimator_pass", reuse=tf.AUTO_REUSE):
-        ch = 64
+        ch = 32
         x = tf.layers.conv2d(x,ch,7,2,padding='SAME')#128
         x = res_block(x,ch*2,2,trainable)#164
         #print(x)
@@ -83,7 +77,7 @@ def discrimator_pass(x,trainable=True):
 
 def discrimator_defect(x,trainable=True):
     with tf.variable_scope("discrimator_defect", reuse=tf.AUTO_REUSE):
-        ch = 64
+        ch = 32
         x = tf.layers.conv2d(x,ch,7,2,padding='SAME')#128
         x = res_block(x,ch*2,2,trainable)#164
         #print(x)
@@ -104,10 +98,7 @@ def res_block(x,ch,stride,trainable=True):
     x2 = batch_relu(x2,trainable)
     x2 = tf.layers.conv2d(x2,ch,3,1,padding='SAME')
     x2 = batch_relu(x2,trainable)
-    if(stride==2):
-        short_cut = tf.layers.conv2d(short_cut,ch,3,2,padding='SAME')
-    if(short_cut.shape[-1]!=ch):
-        short_cut = tf.layers.conv2d(short_cut,ch,3,1,padding='SAME')
+    
     return tf.add(x2,short_cut)
 
 def res_up_block(x,ch,trainable=True):
@@ -132,7 +123,7 @@ def discrimator_pass_loss(d_real_pass,d_fake_pass,cycle_loss):
         
     D_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
             logits=d_fake_pass, labels=tf.zeros_like(d_fake_pass)))
-    D_loss = D_loss_real + D_loss_fake
+    D_loss = (D_loss_real + D_loss_fake)/2
     
     G_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
             logits=d_fake_pass, labels=tf.ones_like(d_fake_pass)))
@@ -147,7 +138,7 @@ def discrimator_defect_loss(d_real_defect,d_fake_defect,cycle_loss):
         
     D_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
             logits=d_fake_defect, labels=tf.zeros_like(d_fake_defect)))
-    D_loss = D_loss_real + D_loss_fake
+    D_loss = (D_loss_real + D_loss_fake)/2
     
     G_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
             logits=d_fake_defect, labels=tf.ones_like(d_fake_defect)))
@@ -167,9 +158,9 @@ def d_optimizer(discrimator_pass_loss,discrimator_defect_loss):
     Dp_vars = [var for var in T_vars if var.name.startswith('discrimator_pass')]
     Df_vars = [var for var in T_vars if var.name.startswith('discrimator_defect')]
     with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
-        Dp_opt = tf.train.AdamOptimizer(lr*4,beta1=0.0,beta2=0.9).minimize(discrimator_pass_loss, var_list=Dp_vars)
+        Dp_opt = tf.train.AdamOptimizer(lr*4,beta1=0.5).minimize(discrimator_pass_loss, var_list=Dp_vars)
         
-        Df_opt = tf.train.AdamOptimizer(lr*4,beta1=0.0,beta2=0.9).minimize(discrimator_defect_loss, var_list=Df_vars)
+        Df_opt = tf.train.AdamOptimizer(lr*4,beta1=0.5).minimize(discrimator_defect_loss, var_list=Df_vars)
         #G_opt = tf.train.AdamOptimizer(lr,beta1=0.0,beta2=0.9).minimize(G_loss, var_list=G_vars)
     return Dp_opt,Df_opt
 
@@ -179,9 +170,9 @@ def g_optimizer(generator_pass_loss,generator_defect_loss):
     Gp_vars = [var for var in T_vars if var.name.startswith('transfer_pass')]
     Gf_vars = [var for var in T_vars if var.name.startswith('transfer_defect')]
     with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
-        Gp_opt = tf.train.AdamOptimizer(lr,beta1=0.0,beta2=0.9).minimize(generator_pass_loss, var_list=Gp_vars)
+        Gp_opt = tf.train.AdamOptimizer(lr,beta1=0.0).minimize(generator_pass_loss, var_list=Gp_vars)
         
-        Gf_opt = tf.train.AdamOptimizer(lr,beta1=0.0,beta2=0.9).minimize(generator_defect_loss, var_list=Gf_vars)
+        Gf_opt = tf.train.AdamOptimizer(lr,beta1=0.0).minimize(generator_defect_loss, var_list=Gf_vars)
     return Gp_opt,Gf_opt
 
 def gen_trainsform(img):
