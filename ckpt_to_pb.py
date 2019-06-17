@@ -8,21 +8,21 @@ import densenet_dim
 from tensorflow.python.framework import graph_util
 
 input_tensor_name = 'input:0'
-output_tensor_name = 'Softmax:0'
+output_tensor_name = 'out:0'
 img_path = './29.jpg'
 
-def freeze_graph(pre_soft,x):
+def freeze_graph(p_,pre_soft,x):
     '''
     :param input_checkpoint:
     :param output_graph: PB模型保存路径
     :return:
     '''
     output_graph = './123.pb'
-    input_checkpoint = './checkpoint3_dir/MyModel-101'
+    input_checkpoint = './checkpoint3_dir/MyModel-201'
     #checkpoint = tf.train.get_checkpoint_state(model_folder) #检查目录下ckpt文件状态是否可用
     #input_checkpoint = checkpoint.model_checkpoint_path #得ckpt文件路径
     
-    output_node_names = "Softmax"
+    output_node_names = "out"
     saver = tf.train.import_meta_graph(input_checkpoint + '.meta', clear_devices=True)
 
     
@@ -32,9 +32,9 @@ def freeze_graph(pre_soft,x):
         
         im=cv2.imread(img_path)
         im=im[np.newaxis,:]
-        predict = sess.run(pre_soft,feed_dict={x:im})
+        p,predict = sess.run([p_,pre_soft],feed_dict={x:im})
         print(predict)
-        
+        print(p)
         output_graph_def = graph_util.convert_variables_to_constants(  # 模型持久化，将变量值固定
             sess=sess,
             input_graph_def=sess.graph_def,# 等于:sess.graph_def
@@ -78,8 +78,13 @@ if(__name__=='__main__'):
     with tf.Graph().as_default():
         d = densenet_dim.Dense_net(32,3,10,16,0.5,False,None)
         pre_soft = tf.nn.softmax(d.prediction)
+        a = tf.zeros([1])
+        b = tf.ones([1])
+        print(pre_soft[:,9])
+        pre = tf.where(tf.greater(pre_soft[:,9],0.5),b,a,name='out')
         print(pre_soft)
-        freeze_graph(pre_soft,d.x)
+            
+        freeze_graph(pre_soft,pre,d.x)
         freeze_graph_test('./123.pb',img_path)
         
         
