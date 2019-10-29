@@ -29,56 +29,30 @@ def gt_regression_loss(reg_predict,gt):
     anchor_predict[:,:,3] = anchor_predict[:,:,3]+anchor[:,:,1]
     return anchor_predict
 
-def IoU(y_pred, y_true):
-    I = tf.reduce_sum(y_pred * y_true, axis=(1, 2))
-    U = tf.reduce_sum(y_pred + y_true, axis=(1, 2)) - I
-    return tf.reduce_mean(I / U)
+def gt_loss_preprocess(gt,stride):
+    is_fg = np.zeros((gt.shape[0],stride,stride,1))
+    for i in range(gt.shape[0]):
+        if((gt[2]-gt[0])*(gt[3]-gt[1])>)
 
-def get_iou(masks, predictions):
-    ious = []
-    for i in range(batch_size):
-        mask = masks[i]
-        pred = predictions[i]
-        masks_sum = tf.reduce_sum(mask)
-        predictions_sum = tf.reduce_mean(pred)
-        intersection = tf.reduce_sum(tf.multiply(mask, pred))
-        union = masks_sum + predictions_sum - intersection
-        iou = intersection / union
-        ious.append(iou)
-    return ious
-
-def IOU(Reframe,GTframe):
-
-    x1 = Reframe[0]
-    y1 = Reframe[1]
-    width1 = Reframe[2]-Reframe[0]
-    height1 = Reframe[3]-Reframe[1]
-
-    x2 = GTframe[0]
-    y2 = GTframe[1]
-    width2 = GTframe[2]-GTframe[0]
-    height2 = GTframe[3]-GTframe[1]
-
-    endx = tf.maximum(x1+width1,x2+width2)
-    startx = tf.minimum(x1,x2)
-    width = width1+width2-(endx-startx)
-
-    endy = tf.maximum(y1+height1,y2+height2)
-    starty = tf.minimum(y1,y2)
-    height = height1+height2-(endy-starty)
-    
-    
-
-
-    Area = width*height
-    Area1 = width1*height1
-    Area2 = width2*height2
-    ratio = Area*1./(Area1+Area2-Area)
-    return ratio
-
-
+ def iou_loss(gt,gt_predict):
+        '''
+        x = tf.placeholder(tf.float32,[None,4])
+        y = tf.placeholder(tf.float32,[28,28,4])
+        y_ = tf.reshape(y,[28*28,4])
+        IOU_loss = tf.map_fn(lambda x:iou_loss(x,y_),elems=x)
+        print(IOU_loss)
+        '''
+        gt_X = (gt[0]+gt[2])*(gt[1]+gt[3])
+        gt_predict_X = (gt_predict[:,0]+gt_predict[:,2])*(gt_predict[:,1]+gt_predict[:,3])
+        I_h = tf.minimum(gt[0],gt_predict[:,0])+tf.minimum(gt[2],gt_predict[:,2])
+        I_w = tf.minimum(gt[1],gt_predict[:,1])+tf.minimum(gt[3],gt_predict[:,3])
+        I = I_h*I_w
+        U = gt_X*gt_predict_X
+        IOU = I/U
+        return IOU
 
 with tf.Graph().as_default(): 
+    '
     r = res2net.res2net(1,224,3)
     z = np.zeros((1,224,224,3))
     
@@ -88,11 +62,14 @@ with tf.Graph().as_default():
     print(r.label[...,4],anchor_prediction)
     IOU_loss = IoU(r.label[...,:4],anchor_prediction)
     print(IOU_loss)
-
+    
+    x = tf.placeholder(tf.float32,[])
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
+        
         C3_reg_predict = sess.run(r.C3_reg,feed_dict={r.x:z})
         C3_anchor_preidction = np.zeros((batch_size,4))
         for b in range(batch_size):
             C3_loc = gt_regression_loss(C3_reg_predict[b],ground_truth[b])
         print(sess.run(IOU_loss,feed_dict={r.x:z,anchor_prediction:C3_loc[np.newaxis,...],r.label:ground_truth}))
+        
