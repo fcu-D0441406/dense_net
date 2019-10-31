@@ -15,8 +15,9 @@ class Res2net:
         self.P4_feature_center = tf.placeholder(tf.float32,[batch_size,64,64,2])
         
         self.input = tf.placeholder(tf.uint8,[batch_size,256,256,3],name='amd-clayton12-lubm-fv-camtek_inputLayer')
-        self.ground_truth = tf.placeholder(tf.float32,[batch_size,None,5])
-        self.ground_truths = self.ground_truth
+        self.ground_truth = tf.placeholder(tf.float32,[batch_size,None,4])
+        self.label = tf.placeholder(tf.float32,[batch_size,None,class_num])
+        print(self.ground_truth)
         self.inputs = tf.div(tf.cast(self.input,dtype=tf.float32),255.0)
 
         print(self.input)
@@ -95,9 +96,9 @@ class Res2net:
 
             self.C4 = self.resnet_block(self.C3,64,3,5,True,scope_name='res2net0')#64
 
-            self.C5 = self.resnet_block(self.C4,128,4,5,scope_name='res2net1')#32
+            self.C5 = self.resnet_block(self.C4,128,3,5,scope_name='res2net1')#32
 
-            self.C6 = self.resnet_block(self.C5,256,6,5,scope_name='res2net2')#16
+            self.C6 = self.resnet_block(self.C5,256,3,5,scope_name='res2net2')#16
 
             
             self.P5 = self.fpn_net(self.C5,self.C6)#32
@@ -111,30 +112,81 @@ class Res2net:
             
             self.C6_reg_pre = self.build_reg_net(self.C6)
             self.C6_cs_pre,self.C6_cls_pre = self.build_cs_net(self.C6)
-            #print(self.C6_reg_pre,self.C6_cs_pre,self.C6_cls_pre)
+            print(self.C6_reg_pre,self.C6_cs_pre,self.C6_cls_pre)
             
             self.P5_reg_pre = self.build_reg_net(self.P5)
             self.P5_cs_pre,self.P5_cls_pre = self.build_cs_net(self.P5)
-            #print(self.P5_reg_pre,self.P5_cs_pre,self.P5_cls_pre)
+            print(self.P5_reg_pre,self.P5_cs_pre,self.P5_cls_pre)
             
             self.P4_reg_pre = self.build_reg_net(self.P4)
             self.P4_cs_pre,self.P4_cls_pre = self.build_cs_net(self.P4)
-            #print(self.P4_reg_pre,self.P4_cs_pre,self.P4_cls_pre)
+            print(self.P4_reg_pre,self.P4_cs_pre,self.P4_cls_pre)
             
-            self.C6_loss,self.P5_loss,self.P4_loss = 0,0,0
+            self.C6_reg_loss,self.P5_reg_loss,self.P4_reg_loss = 0,0,0
+            self.C6_cls_loss,self.P5_cls_loss,self.P4_cls_loss = 0,0,0
+            self.C6_cs_loss,self.P5_cs_loss,self.P4_cs_loss = 0,0,0
 #             print(self.ground_truths[0,:,:,:4],self.C6_feature_center[0],self.C6_reg_pre[0])
 #             print(self.ground_truths)
 #             print(self.C6_feature_center)
 #             print(self.C6_reg_pre)
             
             for i in range(self.batch_size):
-                self.C6_reg_loss = self.C6_loss+self.reg_loss(self.ground_truths[i,:,:4],self.C6_feature_center[i],self.C6_reg_pre[i])
-                self.P5_reg_loss = self.P5_loss+self.reg_loss(self.ground_truths[i,:,:4],self.P5_feature_center[i],self.P5_reg_pre[i])
-                self.P4_reg_loss = self.P4_loss+self.reg_loss(self.ground_truths[i,:,:4],self.P4_feature_center[i],self.P4_reg_pre[i])
-            print(self.C6_reg_loss,self.P5_reg_loss,self.P4_reg_loss)
+                self.C6_reg_loss = self.C6_reg_loss+self.reg_iterator(self.ground_truth[i,:,:4],self.C6_feature_center[i],self.C6_reg_pre[i],1)
+                self.P5_reg_loss = self.P5_reg_loss+self.reg_iterator(self.ground_truth[i,:,:4],self.P5_feature_center[i],self.P5_reg_pre[i],0)
+                self.P4_reg_loss = self.P4_reg_loss+self.reg_iterator(self.ground_truth[i,:,:4],self.P4_feature_center[i],self.P4_reg_pre[i],-1)
+                
+            for i in range(self.batch_size):
+                self.C6_cls_loss = self.C6_cls_loss+self.cls_iterator(self.ground_truth[i,:,:4],self.C6_feature_center[i],,self.C6_cls_pre[i])
+                self.P5_reg_loss = self.P5_reg_loss+self.reg_iterator(self.ground_truth[i,:,:4],self.P5_feature_center[i],self.P5_reg_pre[i],0)
+                self.P4_reg_loss = self.P4_reg_loss+self.reg_iterator(self.ground_truth[i,:,:4],self.P4_feature_center[i],self.P4_reg_pre[i],-1)
             
-                    
+            
+            print(self.C6_reg_loss,self.P5_reg_loss,self.P4_reg_loss)
     
+    
+    def reg_iterator(self,ground_truth,feature_center,gt_predict,p_id=0):
+        return tf.map_fn(lambda x:self.reg_loss(x,feature_center,gt_predict),elems=ground_truth)
+    
+    def cls_iterator(self,ground_truth,feature_center,true_label,predict_label):
+        return tf.map_fn(lambda x:self.cls_loss(x,feature_center,true_label,predict_label),elems=ground_truth)
+    
+    def is_in_box(self,ground_truth,feature_center):
+        ground_truth = ground_truth/self.img_size
+        feature_center = feature_center/self.img_size
+
+        x_mask = tf.cast(tf.transpose(feature_center[:,:,0],[1,0])>ground_truth[0],dtype=tf.float32)*tf.cast(tf.transpose(feature_center[:,:,0],[1,0])<ground_truth[2],dtype=tf.float32)
+        y_mask = tf.cast(feature_center[:,:,1]>ground_truth[1],dtype=tf.float32)*tf.cast(feature_center[:,:,1]<ground_truth[3],dtype=tf.float32)
+            
+        return x_mask*y_mask 
+    
+    def cls_loss(self,ground_truth,feature_center,,true_label,predict_label):
+        def multi_category_focal_loss1(y_true,y_pred,gamma=2.0):
+            alpha = []
+            for i in range(self.class_num):
+                alpha.append([1])
+            epsilon = 1e-7
+            #alpha = tf.constant([[1],[1],[1],[1],[1]], dtype=tf.float32)
+            alpha = tf.constant(alpha, dtype=tf.float32)
+            gamma = float(gamma)
+
+            y_true = tf.cast(y_true, tf.float32)
+            y_pred = tf.clip_by_value(y_pred, epsilon, 1. - epsilon)
+            y_t = tf.multiply(y_true, y_pred) + tf.multiply(1-y_true, 1-y_pred)
+            ce = -tf.log(y_t)
+            weight = tf.where(tf.greater(1-y_t,0.01),1-y_t,tf.pow(1-y_t,2))
+
+            loss = tf.matmul(tf.multiply(weight, ce), alpha)
+
+            return loss
+        
+        mask = self.is_in_box(ground_truth,feature_center)
+        mask = tf.reshape(mask,[-1,1])
+        #cls_loss = tf.
+        predict_label_sigmoid = tf.nn.sigmoid(predict_label)
+        cls_loss = multi_category_focal_loss1(tf.reshape(true_label,[-1,1]),tf.reshpe(predict_label,[-1,1]))
+        cls_loss = cls_loss*mask_loss
+        return cls_loss
+        
     def iou_loss(self,gt,gt_predict):
         gt_X = (gt[:,:,0]+gt[:,:,2])*(gt[:,:,1]+gt[:,:,3])
         gt_predict_X = (gt_predict[:,:,0]+gt_predict[:,:,2])*(gt_predict[:,:,1]+gt_predict[:,:,3])
@@ -142,46 +194,43 @@ class Res2net:
         I_w = tf.minimum(gt[:,:,1],gt_predict[:,:,1])+tf.minimum(gt[:,:,3],gt_predict[:,:,3])
         I = I_h*I_w
         U = gt_X*gt_predict_X
-        IOU = I/U
-        return IOU
+        IOU = I/(U+1e-12)
+        return -tf.log(tf.clip_by_value(IOU,1e-12,IOU))
 
-    def is_in_box(self,ground_truth,feature_center,gt_predict):
-        ground_truth = ground_truth/img_size
-        feature_center = feature_center/img_size
+    def reg_loss(self,ground_truth,feature_center,gt_predict,p_id=0):
 
-        x_mask = tf.cast(feature_center[:,:,0]>ground_truth[0],dtype=tf.float32)*tf.cast(feature_center[:,:,0]<ground_truth[2],dtype=tf.float32)
-        y_mask = tf.cast(feature_center[:,:,1]>ground_truth[1],dtype=tf.float32)*tf.cast(feature_center[:,:,1]<ground_truth[3],dtype=tf.float32)
-        mask = x_mask*y_mask
-
+        mask = self.is_in_box(ground_truth,feature_center)
         label_gt_l = tf.expand_dims(feature_center[:,:,0]-ground_truth[0],axis=-1)
         label_gt_r = tf.expand_dims(ground_truth[2] - feature_center[:,:,0],axis=-1)
         label_gt_t = tf.expand_dims(feature_center[:,:,1]-ground_truth[1],axis=-1)
         label_gt_b = tf.expand_dims(ground_truth[3] - feature_center[:,:,1],axis=-1)
 
         label_gt = tf.concat([label_gt_l,label_gt_t,label_gt_r,label_gt_b],axis=-1)
-        loss = iou_loss(label_gt,gt_predict)
-        return mask*loss
-    
-    
-    
-    def reg_loss(self,ground_truth,feature_center,gt_predict):
-        def cal_loss(ground_truth,feature_center,gt_predict):
-            stride_length = gt_predict.shape[0]
-            s_area = self.img_size//stride_length
-            area = (ground_truth[2]-ground_truth[0])*(ground_truth[3]-ground_truth[1])
-            print(area)
-            return tf.cond(tf.greater(area,s_area),
-                           lambda: is_in_box(ground_truth,feature_center,gt_predict),lambda: 0)
+        loss = self.iou_loss(label_gt,gt_predict)*mask
         
-        loss = tf.map_fn(lambda x:cal_loss(x,feature_center,gt_predict),elems=ground_truth)
-        return loss
-    
+        stride_length = int(gt_predict.shape[0])
+
+        area = (ground_truth[2]-ground_truth[0])*(ground_truth[3]-ground_truth[1])
+
+        if(p_id==1):
+            logic_a = True
+        else:
+            logic_a = tf.greater(area,stride_length)
+        if(p_id==-1):
+            logic_b = True
+        else:
+            logic_b = tf.greater(float(stride_length*2),area)
+
+        area_logic = tf.cast(tf.math.logical_and(logic_a,logic_b),dtype=tf.float32)
+
+        return loss*area_logic
     
     def build_reg_net(self,x):
         for i in range(4):
             x = tf.layers.conv2d(x,256,3,1,padding='SAME')
             x = self.batch_relu(x)
         x = tf.layers.conv2d(x,4,1,1,padding='SAME')
+        x = tf.nn.relu(x)
         
         return x
     
