@@ -3,7 +3,7 @@ import numpy as np
 
 class Res2net:
     
-    def __init__(self,batch_size=1,class_num=2,trainable=True):
+    def __init__(self,batch_size=1,class_num=1,trainable=True):
         
         self.img_size = 256
         self.batch_size = batch_size
@@ -16,7 +16,9 @@ class Res2net:
         
         self.input = tf.placeholder(tf.uint8,[batch_size,256,256,3],name='amd-clayton12-lubm-fv-camtek_inputLayer')
         self.ground_truth = tf.placeholder(tf.float32,[batch_size,None,4])
-        self.label = tf.placeholder(tf.float32,[batch_size,None,class_num])
+        self.C6_label = tf.placeholder(tf.float32,[batch_size,16,16,class_num])
+        self.P5_label = tf.placeholder(tf.float32,[batch_size,32,32,class_num])
+        self.P4_label = tf.placeholder(tf.float32,[batch_size,64,64,class_num])
         print(self.ground_truth)
         self.inputs = tf.div(tf.cast(self.input,dtype=tf.float32),255.0)
 
@@ -112,15 +114,15 @@ class Res2net:
             
             self.C6_reg_pre = self.build_reg_net(self.C6)
             self.C6_cs_pre,self.C6_cls_pre = self.build_cs_net(self.C6)
-            print(self.C6_reg_pre,self.C6_cs_pre,self.C6_cls_pre)
+            #print(self.C6_reg_pre,self.C6_cs_pre,self.C6_cls_pre)
             
             self.P5_reg_pre = self.build_reg_net(self.P5)
             self.P5_cs_pre,self.P5_cls_pre = self.build_cs_net(self.P5)
-            print(self.P5_reg_pre,self.P5_cs_pre,self.P5_cls_pre)
+            #print(self.P5_reg_pre,self.P5_cs_pre,self.P5_cls_pre)
             
             self.P4_reg_pre = self.build_reg_net(self.P4)
             self.P4_cs_pre,self.P4_cls_pre = self.build_cs_net(self.P4)
-            print(self.P4_reg_pre,self.P4_cs_pre,self.P4_cls_pre)
+            #print(self.P4_reg_pre,self.P4_cs_pre,self.P4_cls_pre)
             
             self.C6_reg_loss,self.P5_reg_loss,self.P4_reg_loss = 0,0,0
             self.C6_cls_loss,self.P5_cls_loss,self.P4_cls_loss = 0,0,0
@@ -136,9 +138,9 @@ class Res2net:
                 self.P4_reg_loss = self.P4_reg_loss+self.reg_iterator(self.ground_truth[i,:,:4],self.P4_feature_center[i],self.P4_reg_pre[i],-1)
                 
             for i in range(self.batch_size):
-                self.C6_cls_loss = self.C6_cls_loss+self.cls_iterator(self.ground_truth[i,:,:4],self.C6_feature_center[i],,self.C6_cls_pre[i])
-                self.P5_reg_loss = self.P5_reg_loss+self.reg_iterator(self.ground_truth[i,:,:4],self.P5_feature_center[i],self.P5_reg_pre[i],0)
-                self.P4_reg_loss = self.P4_reg_loss+self.reg_iterator(self.ground_truth[i,:,:4],self.P4_feature_center[i],self.P4_reg_pre[i],-1)
+                self.C6_cls_loss = self.C6_cls_loss+self.cls_iterator(self.ground_truth[i,:,:4],self.C6_feature_center[i],self.C6_label[i],self.C6_cls_pre[i])
+                self.P5_cls_loss = self.P5_cls_loss+self.cls_iterator(self.ground_truth[i,:,:4],self.P5_feature_center[i],self.P5_label[i],self.P5_cls_pre[i])
+                self.P4_cls_loss = self.P4_cls_loss+self.cls_iterator(self.ground_truth[i,:,:4],self.P4_feature_center[i],self.P4_label[i],self.P4_cls_pre[i],)
             
             
             print(self.C6_reg_loss,self.P5_reg_loss,self.P4_reg_loss)
@@ -159,8 +161,9 @@ class Res2net:
             
         return x_mask*y_mask 
     
-    def cls_loss(self,ground_truth,feature_center,,true_label,predict_label):
+    def cls_loss(self,ground_truth,feature_center,true_label,predict_label):
         def multi_category_focal_loss1(y_true,y_pred,gamma=2.0):
+            #print(y_true,y_pred)
             alpha = []
             for i in range(self.class_num):
                 alpha.append([1])
@@ -174,17 +177,21 @@ class Res2net:
             y_t = tf.multiply(y_true, y_pred) + tf.multiply(1-y_true, 1-y_pred)
             ce = -tf.log(y_t)
             weight = tf.where(tf.greater(1-y_t,0.01),1-y_t,tf.pow(1-y_t,2))
-
+            print(weight)
+            print(ce)
+            print(alpha)
+            #loss = tf.matmul(tf.multiply(weight, ce), alpha)
             loss = tf.matmul(tf.multiply(weight, ce), alpha)
-
             return loss
         
         mask = self.is_in_box(ground_truth,feature_center)
         mask = tf.reshape(mask,[-1,1])
         #cls_loss = tf.
         predict_label_sigmoid = tf.nn.sigmoid(predict_label)
-        cls_loss = multi_category_focal_loss1(tf.reshape(true_label,[-1,1]),tf.reshpe(predict_label,[-1,1]))
-        cls_loss = cls_loss*mask_loss
+        cls_loss = multi_category_focal_loss1(tf.reshape(true_label,[-1,1]),tf.reshape(predict_label,[-1,1]))
+        #cls_loss = 
+        #print(cls_loss,mask)
+        cls_loss = cls_loss*mask
         return cls_loss
         
     def iou_loss(self,gt,gt_predict):
