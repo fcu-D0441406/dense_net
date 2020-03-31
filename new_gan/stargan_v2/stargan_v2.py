@@ -26,22 +26,21 @@ def get_data_path(path):
 
 def mapping_network(z,scope='mapping_network'):
     mapping_network_deep = 4
-    ch = 32
+    ch = 16
     style_list = list()
     with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
         
         for i in range(mapping_network_deep):
-            z = tf.layers.dense(z,ch)
+            z = tf.layers.dense(z,256)
             z = tf.nn.relu(z)
-            ch = ch*2
 
         for i in range(style_num) :
-            style = tf.layers.dense(z,style_dim)
+            style = tf.layers.dense(z,16)
             style_list.append(style)
         return style_list
 
 def style_encoder(input_img,scope='style_encoder'):
-    ch = 16
+    ch = 8
     style_encoder_list = list()
     with tf.variable_scope(scope,reuse=tf.AUTO_REUSE):
         x = tf.layers.conv2d(input_img,ch,1,1,padding='SAME')
@@ -51,59 +50,61 @@ def style_encoder(input_img,scope='style_encoder'):
             x = tf.layers.average_pooling2d(x,2,2,padding='SAME')
             ch = ch*2
             
-        x = tf.nn.leaky_relu(x,0.2)
+        x = tf.nn.relu(x)
         x = tf.layers.conv2d(x,ch,kernel_size=4,strides=1,padding='VALID')
-        x = tf.nn.leaky_relu(x,0.2)
+        x = tf.nn.relu(x)
         x = tf.layers.flatten(x)
 
         for i in range(style_num):
-            style_encoder_list.append(tf.layers.dense(x,style_dim))
+            style_encoder_list.append(tf.layers.dense(x,16))
         
         return style_encoder_list
 
 def generator(input_img,style_code,scope='generator'):
     
     with tf.variable_scope(scope,reuse=tf.AUTO_REUSE):
-        ch = 32
+        ch = 16
         x = tf.layers.conv2d(input_img,ch,1,1,padding='SAME',kernel_initializer=weight_init)
-        for i in range(4):
+        for i in range(2):
             x = resblock(x,ch,3,1,scope_name='resblock_down'+str(i))
             x = tf.layers.average_pooling2d(x,2,2,padding='SAME')
             ch = ch*2
         
-        for i in range(2):
+        for i in range(1):
             x = resblock(x,ch,3,1,scope_name='resblock'+str(i))
         
-        for i in range(2):
+        for i in range(1):
             gamma1 = tf.layers.dense(style_code,ch)
             beta1 = tf.layers.dense(style_code,ch)
             
             gamma2 = tf.layers.dense(style_code,ch)
             beta2 = tf.layers.dense(style_code,ch)
             
-            x = resblock_adain(x,ch,3,1,tf.reshape(gamma1,[gamma1.shape[0],1,1,-1]),tf.reshape(beta1,[beta1.shape[0],1,1,-1]),
-                               tf.reshape(gamma2,[gamma2.shape[0],1,1,-1]),tf.reshape(beta2,[beta2.shape[0],1,1,-1]),
+            x = resblock_adain(x,ch,3,1,tf.reshape(gamma1,[gamma1.shape[0],-1]),tf.reshape(beta1,[beta1.shape[0],-1]),
+                               tf.reshape(gamma2,[gamma2.shape[0],-1]),tf.reshape(beta2,[beta2.shape[0],-1]),
                                scope_name='ada_resblock'+str(i))
             
-        for i in range(4):
+        for i in range(2):
             
             
             x = tf.image.resize_nearest_neighbor(x,[x.shape[1]*2,x.shape[2]*2])
+            
             gamma1 = tf.layers.dense(style_code,ch)
             beta1 = tf.layers.dense(style_code,ch)
             gamma2 = tf.layers.dense(style_code,ch//2)
             beta2 = tf.layers.dense(style_code,ch//2)
             
-            x = resblock_adain(x,ch//2,3,1,tf.reshape(gamma1,[gamma1.shape[0],1,1,-1]),tf.reshape(beta1,[beta1.shape[0],1,1,-1]),
-                               tf.reshape(gamma2,[gamma2.shape[0],1,1,-1]),tf.reshape(beta2,[beta2.shape[0],1,1,-1]),
+            x = resblock_adain(x,ch//2,3,1,tf.reshape(gamma1,[gamma1.shape[0],-1]),tf.reshape(beta1,[beta1.shape[0],-1]),
+                               tf.reshape(gamma2,[gamma2.shape[0],-1]),tf.reshape(beta2,[beta2.shape[0],-1]),
                                scope_name='ada_resblock_up'+str(i))
+            
             ch = ch//2
         x = tf.layers.conv2d(x,3,1,1)
         #
         return tf.nn.sigmoid(x)
     
 def discriminator(input_img,scope='discriminator'):
-    ch = 32
+    ch = 16
     discriminator_list = list()
     with tf.variable_scope(scope,reuse=tf.AUTO_REUSE):
         x = tf.layers.conv2d(input_img,ch,1,1,padding='SAME')
@@ -182,12 +183,12 @@ def train():
     original_label = tf.placeholder(tf.int32,[])
     target_label = tf.placeholder(tf.int32,[])
     
-    random_z = tf.random_normal([1,style_dim])
+    random_z = tf.random_normal([1,16])
     random_style_encoder = tf.gather(mapping_network(random_z),target_label)
     
-    random_z2 = tf.random_normal([1,style_dim])
+    random_z2 = tf.random_normal([1,16])
     random_style_encoder2 = tf.gather(mapping_network(random_z2),target_label)
-    random_z3 = tf.random_normal([1,style_dim])
+    random_z3 = tf.random_normal([1,16])
     random_style_encoder3 = tf.gather(mapping_network(random_z3),target_label)
 
     fake_img = generator(original_img,random_style_encoder)
@@ -197,18 +198,15 @@ def train():
     original_style_encoder = tf.gather(style_encoder(original_img),original_label)
     fake_style_encoder = tf.gather(style_encoder(fake_img),target_label)
     target_style_encoder = tf.gather(style_encoder(target_img),target_label)
-    
-    
-    
+
     cycle_original_img = generator(fake_img,original_style_encoder)
-    fake_img_style_encoder = style_encoder(fake_img)
     
     real_logit = tf.gather(discriminator(original_img),original_label)
     fake_logit = tf.gather(discriminator(fake_img),target_label)
     
-    generator_ls = generator_loss(fake_img)
+    generator_ls = generator_loss(fake_logit)
     cycle_ls = cycle_loss(original_img,cycle_original_img)
-    style_ls = style_loss(fake_style_encoder,random_style_encoder)
+    style_ls = style_loss(fake_style_encoder,target_style_encoder)
     diverse_ls = diverse_loss(fake_img2,fake_img3)
     
     g_loss = generator_ls+cycle_ls+style_ls-diverse_ls
@@ -225,10 +223,10 @@ def train():
     ema = tf.train.ExponentialMovingAverage(decay=0.99)
     
     with tf.name_scope('opt'):
-        g_opt = tf.train.AdamOptimizer(1e-3,name='g_optimizer',beta1=0.0,beta2=0.99).minimize(g_loss,var_list=g_vars)
-        e_opt = tf.train.AdamOptimizer(1e-3,name='e_optimizer',beta1=0.0,beta2=0.99).minimize(g_loss,var_list=e_vars)
+        g_opt = tf.train.AdamOptimizer(1e-4,name='g_optimizer',beta1=0.0,beta2=0.99).minimize(g_loss,var_list=g_vars)
+        e_opt = tf.train.AdamOptimizer(1e-4,name='e_optimizer',beta1=0.0,beta2=0.99).minimize(g_loss,var_list=e_vars)
         f_opt = tf.train.AdamOptimizer(1e-4*0.01,name='f_optimizer',beta1=0.0,beta2=0.99).minimize(g_loss,var_list=f_vars)
-        d_opt = tf.train.AdamOptimizer(1e-3,name='d_optimizer',beta1=0.0,beta2=0.99).minimize(d_loss,var_list=d_vars)
+        d_opt = tf.train.AdamOptimizer(1e-4,name='d_optimizer',beta1=0.0,beta2=0.99).minimize(d_loss,var_list=d_vars)
         with tf.control_dependencies([g_opt, e_opt, f_opt]):
             g_opt = ema.apply(g_vars)
             e_opt = ema.apply(e_vars)
@@ -244,41 +242,44 @@ def train():
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         print('start train')
-        for i in range(1000):
+        for i in range(10000):
             np.random.shuffle(dog_image_list)
             np.random.shuffle(cat_image_list)
             for j in range(dog_image_list.shape[0]):
                 dog_img,dog_label = get_train_with_aug(dog_image_list,dog_label_list,dog_shuffle_list,j)
                 cat_img,cat_label = get_train_with_aug(cat_image_list,cat_label_list,cat_shuffle_list,j)
-                if(j%2==0):
+                if(i%2==0):
                     sess.run(d_opt,feed_dict={original_img:dog_img,original_label:dog_label,
                                                                  target_img:cat_img,target_label:cat_label})
                     sess.run([g_opt,e_opt,f_opt],feed_dict={original_img:dog_img,original_label:dog_label,
                                                                  target_img:cat_img,target_label:cat_label})
                 else:
-                    sess.run(d_opt,feed_dict={original_img:dog_img,original_label:dog_label,
-                                                                 target_img:cat_img,target_label:cat_label})
-                    sess.run([g_opt,e_opt,f_opt],feed_dict={original_img:dog_img,original_label:dog_label,
-                                                                 target_img:cat_img,target_label:cat_label})
+                    sess.run(d_opt,feed_dict={original_img:cat_img,original_label:cat_label,
+                                                                 target_img:dog_img,target_label:dog_label})
+                    sess.run([g_opt,e_opt,f_opt],feed_dict={original_img:cat_img,original_label:cat_label,
+                                                                 target_img:dog_img,target_label:dog_label})
     
             dog_img,dog_label = get_train_with_aug(dog_image_list,dog_label_list,dog_shuffle_list,0)
             cat_img,cat_label = get_train_with_aug(cat_image_list,cat_label_list,cat_shuffle_list,0)
-            if(i%2==0):
+            if(i%20==0):
                 g_ls1,g_ls2,g_ls3,g_ls4,d_loss_,fake_img_,cy_img = sess.run([generator_ls,cycle_ls,style_ls,diverse_ls,d_loss,fake_img,cycle_original_img],
                                                      feed_dict={original_img:dog_img,original_label:dog_label,
-                                                                target_img:cat_img,target_label:cat_label})
-            else:
+                                                               target_img:cat_img,target_label:cat_label})
+                
+                plt.imshow(dog_img[0])
+                plt.show()
+                plt.imshow(fake_img_[0])
+                plt.show()
+                print(i,'generator_loss,cycle_loss,style_loss',g_ls1,'d_loss',d_loss_)
+            elif(i%20==10):
                 g_ls1,g_ls2,g_ls3,g_ls4,d_loss_,fake_img_,cy_img = sess.run([generator_ls,cycle_ls,style_ls,diverse_ls,d_loss,fake_img,cycle_original_img],
                                                      feed_dict={original_img:cat_img,original_label:cat_label,
                                                                 target_img:dog_img,target_label:dog_label})
-            print(i,'generator_loss,cycle_loss,style_loss,diverse_loss',g_ls1,g_ls2,g_ls3,g_ls4,'d_loss',d_loss_)
-            
-            plt.imshow(dog_img[0])
-            plt.show()
-            plt.imshow(fake_img_[0])
-            plt.show()
-            plt.imshow(cy_img[0])
-            plt.show()
+                plt.imshow(cat_img[0])
+                plt.show()
+                plt.imshow(fake_img_[0])
+                plt.show()
+                print(i,'generator_loss,cycle_loss,style_loss',g_ls1,'d_loss',d_loss_)
 
     
 train()
